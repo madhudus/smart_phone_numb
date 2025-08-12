@@ -59,7 +59,8 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
 
   Future<void> _loadTimezoneMapping() async {
     try {
-      final jsonString = await rootBundle.loadString('packages/smart_phone_numb/timezone_country_mapping.json');
+      final jsonString = await rootBundle.loadString(
+          'packages/smart_phone_numb/timezone_country_mapping.json');
       final Map<String, dynamic> jsonMap = json.decode(jsonString);
       _timezoneCountryMap = jsonMap.cast<String, String>();
       _getInitialCountryCode();
@@ -79,13 +80,13 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
       if (_timezoneCountryMap!.containsKey(timezone)) {
         return _timezoneCountryMap![timezone];
       }
-      
+
       // Fallback patterns
       if (timezone.startsWith('America/')) return 'US';
       if (timezone.startsWith('Europe/')) return 'GB';
       if (timezone.startsWith('Asia/')) return 'IN';
     }
-    
+
     // Default to India if no mapping found
     return 'IN';
   }

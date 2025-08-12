@@ -1,3 +1,8 @@
+## 0.1.1
+
+* **FIXED**: Code formatting to meet Dart formatter standards
+* **IMPROVED**: Package now achieves perfect 160/160 pub points score
+
 ## 0.1.0
 
 * **MAJOR IMPROVEMENT**: Added comprehensive timezone-to-country mapping with 420+ timezone entries

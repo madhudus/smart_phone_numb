@@ -15,7 +15,7 @@ Add this package to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  smart_phone_numb: ^0.0.1
+  smart_phone_numb: ^0.0.4
 ```
 
 Then run:

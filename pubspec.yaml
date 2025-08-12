@@ -1,8 +1,8 @@
 name: smart_phone_numb
 description: "A Flutter package for a smart phone number field that automatically suggests the country code and sets the phone number length dynamically  based on timezone."
 version: 0.0.1
-homepage: https://github.com/your_username/smart_phone_numb
-repository: https://github.com/your_username/smart_phone_numb
+homepage: https://github.com/madhudus/smart_phone_numb
+repository: https://github.com/madhudus/smart_phone_numb.git
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -17,7 +17,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

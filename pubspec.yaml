@@ -1,6 +1,6 @@
 name: smart_phone_numb
-description: "A Flutter package for a smart phone number field that automatically suggests the country code and sets the phone number length dynamically  based on timezone."
-version: 0.1.1
+description: "A Flutter package for a smart phone number field that automatically suggests the country code and sets the phone number length dynamically based on timezone."
+version: 0.2.0
 homepage: https://github.com/madhudus/smart_phone_numb
 repository: https://github.com/madhudus/smart_phone_numb.git
 

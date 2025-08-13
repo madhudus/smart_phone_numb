@@ -31,7 +31,26 @@ class MyHomePage extends StatelessWidget {
       ),
       body: const Padding(
         padding: EdgeInsets.all(16.0),
-        child: SmartPhoneNumberField(),
+        child: Column(
+          children: [
+            Text(
+              'Default configuration (US as default country):',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+            SmartPhoneNumberField(),
+            SizedBox(height: 20),
+            Text(
+              'Custom configuration (Germany as default, European countries as favorites):',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+            SmartPhoneNumberField(
+              defaultCountryCode: 'DE',
+              favoriteCountries: ['+49', 'DE', '+44', 'GB', '+33', 'FR'],
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,3 +1,13 @@
+## 0.2.0
+
+* **NEW**: Added configurable default country code and favorite countries
+* **IMPROVED**: Enhanced error handling with visual error indicators
+* **IMPROVED**: Better validation messages with specific min/max digit requirements
+* **IMPROVED**: Expanded fallback timezone mapping for more accurate country detection
+* **IMPROVED**: Added comprehensive test coverage for new features
+* **IMPROVED**: Enhanced documentation and example app
+* **REMOVED**: Country selection persistence (kept package simpler)
+
 ## 0.1.1
 
 * **FIXED**: Code formatting to meet Dart formatter standards

@@ -1,3 +1,8 @@
+## 0.2.1
+
+* **UPDATED**: country_code_picker dependency to version 3.4.0
+* **IMPROVED**: Enhanced compatibility and stability
+
 ## 0.2.0
 
 * **NEW**: Added configurable default country code and favorite countries

@@ -28,7 +28,7 @@
 .flutter-plugins-dependencies
 build/
 .packages
-pubspec.lock
+/pubspec.lock
 
 # dotenv environment variables file
 .env*
@@ -42,4 +42,3 @@ pubspec.lock
 *.js.map
 
 .claude
-CLAUDE.md

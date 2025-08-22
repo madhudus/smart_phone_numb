@@ -11,7 +11,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  country_code_picker: ^3.3.0
+  country_code_picker: ^3.4.0
   flutter_timezone: ^4.1.1
 
 dev_dependencies:

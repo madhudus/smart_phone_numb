@@ -55,8 +55,8 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
     });
 
     try {
-      final timezone = await FlutterTimezone.getLocalTimezone();
-      final country = _getCountryFromTimezone(timezone);
+      final timezoneInfo = await FlutterTimezone.getLocalTimezone();
+      final country = _getCountryFromTimezone(timezoneInfo.identifier);
 
       if (country != null) {
         setState(() {

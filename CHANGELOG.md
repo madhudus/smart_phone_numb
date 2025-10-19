@@ -1,3 +1,9 @@
+## 0.2.2
+
+* **UPDATED**: flutter_timezone dependency to version 5.0.0
+* **FIXED**: Compatibility with flutter_timezone 5.0.0 API changes (now using TimezoneInfo object)
+* **IMPROVED**: Enhanced timezone detection with support for localized timezone names
+
 ## 0.2.1
 
 * **UPDATED**: country_code_picker dependency to version 3.4.0

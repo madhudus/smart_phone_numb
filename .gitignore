@@ -42,3 +42,7 @@ build/
 *.js.map
 
 .claude
+
+# Documentation drafts (not for publishing)
+MEDIUM_ARTICLE.md
+PUBLISHING_GUIDE.md

@@ -1,9 +1,31 @@
 import 'dart:convert';
+import 'dart:developer';
 import 'package:country_code_picker/country_code_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:smart_phone_numb/phone_number_lengths.dart';
+
+/// Contains the current phone number data including country code and number.
+class PhoneNumberData {
+  /// The selected country code (e.g., '+1', '+91')
+  final String dialCode;
+
+  /// The two-letter country code (e.g., 'US', 'IN')
+  final String countryCode;
+
+  /// The phone number entered by the user (without country code)
+  final String phoneNumber;
+
+  /// The complete phone number with country code
+  String get fullPhoneNumber => '$dialCode$phoneNumber';
+
+  const PhoneNumberData({
+    required this.dialCode,
+    required this.countryCode,
+    required this.phoneNumber,
+  });
+}
 
 /// A smart phone number input field widget that automatically detects
 /// the user's country based on their timezone and provides validation
@@ -19,10 +41,12 @@ class SmartPhoneNumberField extends StatefulWidget {
   ///
   /// [defaultCountryCode] - The default country code to use if timezone detection fails
   /// [favoriteCountries] - A list of favorite country codes to show first in the picker
+  /// [onChanged] - Called whenever the phone number or country code changes
   const SmartPhoneNumberField({
     super.key,
     this.defaultCountryCode = 'US',
     this.favoriteCountries = const ['+91', 'IN'],
+    this.onChanged,
   });
 
   /// The default country code to use if timezone detection fails
@@ -30,6 +54,9 @@ class SmartPhoneNumberField extends StatefulWidget {
 
   /// A list of favorite country codes to show first in the picker
   final List<String> favoriteCountries;
+
+  /// Called whenever the phone number or country code changes
+  final void Function(PhoneNumberData)? onChanged;
 
   @override
   State<SmartPhoneNumberField> createState() => _SmartPhoneNumberFieldState();
@@ -46,6 +73,26 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
   void initState() {
     super.initState();
     _loadTimezoneMapping();
+    _phoneNumberController.addListener(_notifyPhoneNumberChanged);
+  }
+
+  @override
+  void dispose() {
+    _phoneNumberController.removeListener(_notifyPhoneNumberChanged);
+    _phoneNumberController.dispose();
+    super.dispose();
+  }
+
+  /// Notifies parent widget about phone number or country code changes
+  void _notifyPhoneNumberChanged() {
+    if (widget.onChanged != null && _countryCode != null) {
+      final data = PhoneNumberData(
+        dialCode: _countryCode!.dialCode ?? '',
+        countryCode: _countryCode!.code ?? '',
+        phoneNumber: _phoneNumberController.text,
+      );
+      widget.onChanged!(data);
+    }
   }
 
   Future<void> _getInitialCountryCode() async {
@@ -65,11 +112,8 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
       }
     } catch (e) {
       // Log the error for debugging
-      // In a production app, you might want to use a proper logging solution
-      // For now, we'll just print it
-      // ignore: avoid_print
-      print('Error getting timezone: $e');
-      
+      log('Error getting timezone: $e', name: 'SmartPhoneNumberField');
+
       setState(() {
         _hasTimezoneError = true;
         // Set a default country code as fallback
@@ -91,9 +135,51 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
       _getInitialCountryCode();
     } catch (e) {
       // Fallback to basic mapping if JSON loading fails
+      // Includes major timezones from different regions
       _timezoneCountryMap = {
+        // Americas
+        'America/New_York': 'US',
+        'America/Chicago': 'US',
+        'America/Denver': 'US',
+        'America/Los_Angeles': 'US',
+        'America/Toronto': 'CA',
+        'America/Vancouver': 'CA',
+        'America/Mexico_City': 'MX',
+        'America/Sao_Paulo': 'BR',
+        'America/Buenos_Aires': 'AR',
+        // Europe
+        'Europe/London': 'GB',
+        'Europe/Paris': 'FR',
+        'Europe/Berlin': 'DE',
+        'Europe/Rome': 'IT',
+        'Europe/Madrid': 'ES',
+        'Europe/Moscow': 'RU',
+        'Europe/Amsterdam': 'NL',
+        'Europe/Brussels': 'BE',
+        'Europe/Stockholm': 'SE',
+        'Europe/Warsaw': 'PL',
+        // Asia
         'Asia/Kolkata': 'IN',
         'Asia/Calcutta': 'IN',
+        'Asia/Shanghai': 'CN',
+        'Asia/Tokyo': 'JP',
+        'Asia/Seoul': 'KR',
+        'Asia/Hong_Kong': 'HK',
+        'Asia/Singapore': 'SG',
+        'Asia/Dubai': 'AE',
+        'Asia/Bangkok': 'TH',
+        'Asia/Jakarta': 'ID',
+        'Asia/Manila': 'PH',
+        // Oceania
+        'Australia/Sydney': 'AU',
+        'Australia/Melbourne': 'AU',
+        'Australia/Perth': 'AU',
+        'Pacific/Auckland': 'NZ',
+        // Africa
+        'Africa/Cairo': 'EG',
+        'Africa/Johannesburg': 'ZA',
+        'Africa/Lagos': 'NG',
+        'Africa/Nairobi': 'KE',
       };
       _getInitialCountryCode();
     }
@@ -290,6 +376,7 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
                     _countryCode = countryCode;
                     _phoneNumberController.clear();
                   });
+                  _notifyPhoneNumberChanged();
                 },
                 initialSelection: _countryCode?.code,
                 favorite: widget.favoriteCountries,
@@ -312,6 +399,7 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
                 _countryCode = countryCode;
                 _phoneNumberController.clear();
               });
+              _notifyPhoneNumberChanged();
             },
             initialSelection: _countryCode?.code,
             favorite: widget.favoriteCountries,

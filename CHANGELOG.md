@@ -1,3 +1,13 @@
+## 0.2.3
+
+* **NEW**: Added `PhoneNumberData` class to expose phone number state to parent widgets
+* **NEW**: Added `onChanged` callback parameter for real-time phone number change notifications
+* **IMPROVED**: Replaced print() debugging with proper logging using dart:developer
+* **IMPROVED**: Expanded timezone fallback map from 2 to 40+ entries covering all major regions
+* **FIXED**: Phone number validation for Italy (IT) and Vatican (VA) - minimum length updated from 0 to 6 digits
+* **UPDATED**: flutter_timezone dependency to version 5.0.1
+* **IMPROVED**: Better project organization - moved utility scripts to tools/ directory
+
 ## 0.2.2
 
 * **UPDATED**: flutter_timezone dependency to version 5.0.0

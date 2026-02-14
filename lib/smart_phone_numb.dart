@@ -25,6 +25,22 @@ class PhoneNumberData {
     required this.countryCode,
     required this.phoneNumber,
   });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PhoneNumberData &&
+          runtimeType == other.runtimeType &&
+          dialCode == other.dialCode &&
+          countryCode == other.countryCode &&
+          phoneNumber == other.phoneNumber;
+
+  @override
+  int get hashCode => Object.hash(dialCode, countryCode, phoneNumber);
+
+  @override
+  String toString() =>
+      'PhoneNumberData(dialCode: $dialCode, countryCode: $countryCode, phoneNumber: $phoneNumber)';
 }
 
 /// A smart phone number input field widget that automatically detects
@@ -42,11 +58,19 @@ class SmartPhoneNumberField extends StatefulWidget {
   /// [defaultCountryCode] - The default country code to use if timezone detection fails
   /// [favoriteCountries] - A list of favorite country codes to show first in the picker
   /// [onChanged] - Called whenever the phone number or country code changes
+  /// [decoration] - Custom input decoration for the phone number field
+  /// [style] - Text style for the phone number field
+  /// [enabled] - Whether the field is enabled for input
+  /// [showCounterText] - Whether to show the character counter
   const SmartPhoneNumberField({
     super.key,
     this.defaultCountryCode = 'US',
-    this.favoriteCountries = const ['+91', 'IN'],
+    this.favoriteCountries = const [],
     this.onChanged,
+    this.decoration,
+    this.style,
+    this.enabled = true,
+    this.showCounterText = false,
   });
 
   /// The default country code to use if timezone detection fails
@@ -58,6 +82,19 @@ class SmartPhoneNumberField extends StatefulWidget {
   /// Called whenever the phone number or country code changes
   final void Function(PhoneNumberData)? onChanged;
 
+  /// Custom input decoration for the phone number field.
+  /// If null, a default decoration with 'Phone Number' label is used.
+  final InputDecoration? decoration;
+
+  /// Text style for the phone number input.
+  final TextStyle? style;
+
+  /// Whether the field is enabled for input. Defaults to `true`.
+  final bool enabled;
+
+  /// Whether to show the character counter text. Defaults to `false`.
+  final bool showCounterText;
+
   @override
   State<SmartPhoneNumberField> createState() => _SmartPhoneNumberFieldState();
 }
@@ -67,7 +104,9 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
   CountryCode? _countryCode;
   bool _isFetchingTimezone = false;
   bool _hasTimezoneError = false;
-  Map<String, String>? _timezoneCountryMap;
+
+  /// Cached timezone-to-country map shared across all instances.
+  static Map<String, String>? _cachedTimezoneMap;
 
   @override
   void initState() {
@@ -96,6 +135,7 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
   }
 
   Future<void> _getInitialCountryCode() async {
+    if (!mounted) return;
     setState(() {
       _isFetchingTimezone = true;
       _hasTimezoneError = false;
@@ -105,38 +145,40 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
       final timezoneInfo = await FlutterTimezone.getLocalTimezone();
       final country = _getCountryFromTimezone(timezoneInfo.identifier);
 
-      if (country != null) {
-        setState(() {
-          _countryCode = CountryCode.fromCountryCode(country);
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _countryCode = CountryCode.fromCountryCode(country ?? widget.defaultCountryCode);
+        _isFetchingTimezone = false;
+      });
     } catch (e) {
-      // Log the error for debugging
       log('Error getting timezone: $e', name: 'SmartPhoneNumberField');
 
+      if (!mounted) return;
       setState(() {
         _hasTimezoneError = true;
-        // Set a default country code as fallback
         _countryCode = CountryCode.fromCountryCode(widget.defaultCountryCode);
-      });
-    } finally {
-      setState(() {
         _isFetchingTimezone = false;
       });
     }
+
+    _notifyPhoneNumberChanged();
   }
 
   Future<void> _loadTimezoneMapping() async {
+    if (_cachedTimezoneMap != null) {
+      _getInitialCountryCode();
+      return;
+    }
+
     try {
       final jsonString = await rootBundle.loadString(
           'packages/smart_phone_numb/timezone_country_mapping.json');
       final Map<String, dynamic> jsonMap = json.decode(jsonString);
-      _timezoneCountryMap = jsonMap.cast<String, String>();
+      _cachedTimezoneMap = jsonMap.cast<String, String>();
       _getInitialCountryCode();
     } catch (e) {
       // Fallback to basic mapping if JSON loading fails
-      // Includes major timezones from different regions
-      _timezoneCountryMap = {
+      _cachedTimezoneMap = {
         // Americas
         'America/New_York': 'US',
         'America/Chicago': 'US',
@@ -186,15 +228,14 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
   }
 
   String? _getCountryFromTimezone(String timezone) {
-    if (_timezoneCountryMap != null) {
+    if (_cachedTimezoneMap != null) {
       // Try exact match first
-      if (_timezoneCountryMap!.containsKey(timezone)) {
-        return _timezoneCountryMap![timezone];
+      if (_cachedTimezoneMap!.containsKey(timezone)) {
+        return _cachedTimezoneMap![timezone];
       }
 
       // Fallback patterns for better coverage
       if (timezone.startsWith('America/')) {
-        // Most American timezones map to US, but there are some exceptions
         if (timezone == 'America/Argentina/Buenos_Aires' ||
             timezone == 'America/Argentina/Catamarca' ||
             timezone == 'America/Argentina/Cordoba' ||
@@ -207,9 +248,9 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
             timezone == 'America/Argentina/San_Luis' ||
             timezone == 'America/Argentina/Tucuman' ||
             timezone == 'America/Argentina/Ushuaia') {
-          return 'AR'; // Argentina
+          return 'AR';
         }
-        if (timezone == 'America/Buenos_Aires') return 'AR'; // Argentina
+        if (timezone == 'America/Buenos_Aires') return 'AR';
         if (timezone == 'America/Sao_Paulo' ||
             timezone == 'America/Fortaleza' ||
             timezone == 'America/Recife' ||
@@ -223,7 +264,7 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
             timezone == 'America/Manaus' ||
             timezone == 'America/Eirunepe' ||
             timezone == 'America/Rio_Branco') {
-          return 'BR'; // Brazil
+          return 'BR';
         }
         if (timezone == 'America/Toronto' ||
             timezone == 'America/Vancouver' ||
@@ -235,11 +276,9 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
             timezone == 'America/Regina' ||
             timezone == 'America/Fredericton' ||
             timezone == 'America/St_Johns') {
-          return 'CA'; // Canada
+          return 'CA';
         }
         if (timezone == 'America/Mexico_City' ||
-            timezone == 'America/Guadalajara' ||
-            timezone == 'America/Monterrey' ||
             timezone == 'America/Cancun' ||
             timezone == 'America/Hermosillo' ||
             timezone == 'America/Mazatlan' ||
@@ -248,111 +287,72 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
             timezone == 'America/Matamoros' ||
             timezone == 'America/Ojinaga' ||
             timezone == 'America/Bahia_Banderas') {
-          return 'MX'; // Mexico
+          return 'MX';
         }
-        return 'US'; // Default for other American timezones
+        return widget.defaultCountryCode;
       }
       if (timezone.startsWith('Europe/')) {
-        if (timezone == 'Europe/Paris' ||
-            timezone == 'Europe/Marseille' ||
-            timezone == 'Europe/Lyon' ||
-            timezone == 'Europe/Toulouse' ||
-            timezone == 'Europe/Nice' ||
-            timezone == 'Europe/Nantes' ||
-            timezone == 'Europe/Strasbourg' ||
-            timezone == 'Europe/Montpellier' ||
-            timezone == 'Europe/Bordeaux' ||
-            timezone == 'Europe/Lille' ||
-            timezone == 'Europe/Rennes' ||
-            timezone == 'Europe/Reims' ||
-            timezone == 'Europe/Le_Havre' ||
-            timezone == 'Europe/Saint-Etienne' ||
-            timezone == 'Europe/Toulon') {
-          return 'FR'; // France
+        if (timezone == 'Europe/Paris') {
+          return 'FR';
         }
-        if (timezone == 'Europe/Berlin' ||
-            timezone == 'Europe/Hamburg' ||
-            timezone == 'Europe/Munich' ||
-            timezone == 'Europe/Cologne' ||
-            timezone == 'Europe/Frankfurt' ||
-            timezone == 'Europe/Stuttgart' ||
-            timezone == 'Europe/Dusseldorf' ||
-            timezone == 'Europe/Leipzig' ||
-            timezone == 'Europe/Dortmund' ||
-            timezone == 'Europe/Essen' ||
-            timezone == 'Europe/Bremen' ||
-            timezone == 'Europe/Dresden' ||
-            timezone == 'Europe/Hanover' ||
-            timezone == 'Europe/Nuremberg' ||
-            timezone == 'Europe/Duisburg') {
-          return 'DE'; // Germany
+        if (timezone == 'Europe/Berlin') {
+          return 'DE';
         }
-        if (timezone == 'Europe/Rome' ||
-            timezone == 'Europe/Milan' ||
-            timezone == 'Europe/Naples' ||
-            timezone == 'Europe/Turin' ||
-            timezone == 'Europe/Palermo' ||
-            timezone == 'Europe/Genoa' ||
-            timezone == 'Europe/Bologna' ||
-            timezone == 'Europe/Florence' ||
-            timezone == 'Europe/Bari' ||
-            timezone == 'Europe/Catania' ||
-            timezone == 'Europe/Venice' ||
-            timezone == 'Europe/Verona' ||
-            timezone == 'Europe/Messina' ||
-            timezone == 'Europe/Padua' ||
-            timezone == 'Europe/Trieste') {
-          return 'IT'; // Italy
+        if (timezone == 'Europe/Rome') {
+          return 'IT';
         }
-        if (timezone == 'Europe/Madrid' ||
-            timezone == 'Europe/Barcelona' ||
-            timezone == 'Europe/Valencia' ||
-            timezone == 'Europe/Seville' ||
-            timezone == 'Europe/Zaragoza' ||
-            timezone == 'Europe/Malaga' ||
-            timezone == 'Europe/Murcia' ||
-            timezone == 'Europe/Palma' ||
-            timezone == 'Europe/Bilbao' ||
-            timezone == 'Europe/Alicante' ||
-            timezone == 'Europe/Cordoba') {
-          return 'ES'; // Spain
+        if (timezone == 'Europe/Madrid') {
+          return 'ES';
         }
-        return 'GB'; // Default for other European timezones
+        return widget.defaultCountryCode;
       }
       if (timezone.startsWith('Asia/')) {
-        if (timezone == 'Asia/Tokyo') return 'JP'; // Japan
-        if (timezone == 'Asia/Seoul') return 'KR'; // South Korea
+        if (timezone == 'Asia/Tokyo') return 'JP';
+        if (timezone == 'Asia/Seoul') return 'KR';
         if (timezone == 'Asia/Shanghai' ||
             timezone == 'Asia/Chongqing' ||
             timezone == 'Asia/Harbin' ||
             timezone == 'Asia/Urumqi') {
-          return 'CN'; // China
+          return 'CN';
         }
-        if (timezone == 'Asia/Bangkok') return 'TH'; // Thailand
+        if (timezone == 'Asia/Bangkok') return 'TH';
         if (timezone == 'Asia/Jakarta' ||
             timezone == 'Asia/Surabaya' ||
             timezone == 'Asia/Medan' ||
-            timezone == 'Asia/Makassar' ||
-            timezone == 'Asia/Denpasar') {
-          return 'ID'; // Indonesia
+            timezone == 'Asia/Makassar') {
+          return 'ID';
         }
         if (timezone == 'Asia/Kuala_Lumpur' ||
             timezone == 'Asia/Kuching') {
-          return 'MY'; // Malaysia
+          return 'MY';
         }
-        return 'IN'; // Default for other Asian timezones
+        return widget.defaultCountryCode;
       }
-      if (timezone.startsWith('Australia/')) return 'AU'; // Australia
+      if (timezone.startsWith('Australia/')) return 'AU';
       if (timezone.startsWith('Africa/')) {
-        if (timezone == 'Africa/Cairo') return 'EG'; // Egypt
-        if (timezone == 'Africa/Johannesburg') return 'ZA'; // South Africa
-        if (timezone == 'Africa/Lagos') return 'NG'; // Nigeria
-        return 'KE'; // Default for other African timezones (Kenya)
+        if (timezone == 'Africa/Cairo') return 'EG';
+        if (timezone == 'Africa/Johannesburg') return 'ZA';
+        if (timezone == 'Africa/Lagos') return 'NG';
+        return widget.defaultCountryCode;
       }
     }
 
-    // Default to US if no mapping found
     return widget.defaultCountryCode;
+  }
+
+  Widget _buildCountryCodePicker() {
+    return CountryCodePicker(
+      onChanged: (countryCode) {
+        setState(() {
+          _countryCode = countryCode;
+          _phoneNumberController.clear();
+        });
+        _notifyPhoneNumberChanged();
+      },
+      initialSelection: _countryCode?.code,
+      favorite: widget.favoriteCountries,
+      enabled: widget.enabled,
+    );
   }
 
   @override
@@ -363,61 +363,50 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
       maxLength = phoneNumberLengths[_countryCode!.code]!['max'];
     }
 
+    final effectiveDecoration = widget.decoration ??
+        InputDecoration(
+          labelText: 'Phone Number',
+          counterText: widget.showCounterText ? null : '',
+        );
+
     return Row(
       children: [
         if (_isFetchingTimezone)
-          const CircularProgressIndicator()
+          Semantics(
+            label: 'Detecting country',
+            child: const CircularProgressIndicator(),
+          )
         else if (_hasTimezoneError)
           Stack(
             children: [
-              CountryCodePicker(
-                onChanged: (countryCode) {
-                  setState(() {
-                    _countryCode = countryCode;
-                    _phoneNumberController.clear();
-                  });
-                  _notifyPhoneNumberChanged();
-                },
-                initialSelection: _countryCode?.code,
-                favorite: widget.favoriteCountries,
-              ),
+              _buildCountryCodePicker(),
               const Positioned(
                 right: 0,
                 top: 0,
-                child: Icon(
-                  Icons.warning,
-                  color: Colors.orange,
-                  size: 16,
+                child: Tooltip(
+                  message: 'Could not detect timezone automatically',
+                  child: Icon(
+                    Icons.warning,
+                    color: Colors.orange,
+                    size: 16,
+                  ),
                 ),
               ),
             ],
           )
         else
-          CountryCodePicker(
-            onChanged: (countryCode) {
-              setState(() {
-                _countryCode = countryCode;
-                _phoneNumberController.clear();
-              });
-              _notifyPhoneNumberChanged();
-            },
-            initialSelection: _countryCode?.code,
-            favorite: widget.favoriteCountries,
-          ),
+          _buildCountryCodePicker(),
         Expanded(
           child: TextFormField(
             controller: _phoneNumberController,
             keyboardType: TextInputType.phone,
             maxLength: maxLength,
+            enabled: widget.enabled,
+            style: widget.style,
             inputFormatters: [
               FilteringTextInputFormatter.digitsOnly,
-              if (maxLength != null)
-                LengthLimitingTextInputFormatter(maxLength),
             ],
-            decoration: const InputDecoration(
-              labelText: 'Phone Number',
-              counterText: '',
-            ),
+            decoration: effectiveDecoration,
             validator: (value) {
               if (_countryCode == null || value == null || value.isEmpty) {
                 return null;

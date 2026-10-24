@@ -1,53 +1,50 @@
-# How to Publish to pub.dev
+# Publishing to pub.dev
 
-Here are the steps to publish your Flutter package to [pub.dev](https://pub.dev).
+Releases are published by GitHub Actions using
+[pub.dev automated publishing](https://dart.dev/tools/pub/automated-publishing).
+No pub.dev credentials are stored in the repository: the workflow authenticates
+with a short-lived OIDC token issued by GitHub.
 
-## 1. Update `pubspec.yaml`
+## One-time setup
 
-Before publishing, make sure your `pubspec.yaml` file is complete. The following fields are particularly important:
+1. Open <https://pub.dev/packages/smart_phone_numb/admin> while signed in as an
+   uploader of the package.
+2. Under **Automated publishing**, click **Enable publishing from GitHub Actions** and set:
+   - **Repository**: `madhudus/smart_phone_numb`
+   - **Tag pattern**: `v{{version}}`
+   - Optionally tick **Require GitHub Actions environment** and enter `pub.dev`.
+     The publish workflow runs in that environment, so you can add required
+     reviewers to it under **Settings → Environments** on GitHub.
 
-*   `name`: The name of your package.
-*   `description`: A short description of what your package does.
-*   `version`: The version number of your package. Follow [semantic versioning](https://semver.org/).
-*   `homepage`: A URL to the homepage of your package (usually the GitHub repository).
-*   `repository`: A URL to the source code repository of your package.
+## Releasing a new version
 
-I have already updated your `pubspec.yaml` with placeholder values for `homepage` and `repository`. **You must change these to your actual repository URL.**
+1. Bump `version` in `pubspec.yaml` and add an entry at the top of `CHANGELOG.md`.
+2. Run the same checks as CI:
 
-## 2. Update `CHANGELOG.md`
+   ```bash
+   flutter pub get
+   dart format --set-exit-if-changed .
+   flutter analyze
+   flutter test
+   flutter pub publish --dry-run
+   ```
 
-For each new version you publish, you should add an entry to your `CHANGELOG.md` file. This file should describe the changes made in the new version.
+3. Merge the change to `main`.
+4. Tag the release commit and push the tag:
 
-Example `CHANGELOG.md`:
+   ```bash
+   git tag v0.3.0
+   git push origin v0.3.0
+   ```
 
-```markdown
-## 0.0.1
+The [Publish to pub.dev](.github/workflows/publish.yml) workflow checks that the
+tag matches the pubspec version, runs analysis and tests, and publishes.
+Progress is visible in the repository's **Actions** tab.
 
-* Initial release of the smart phone number field.
-```
+## Manual fallback
 
-## 3. Check for a `LICENSE` file
-
-Make sure you have a `LICENSE` file in the root of your project. This is important for legal reasons and is required by pub.dev. You can choose a license like MIT, BSD, or Apache.
-
-## 4. Run the Dry Run
-
-Before you publish, it's a good idea to run the publish command with the `--dry-run` flag. This will analyze your package and let you know if there are any issues that would prevent you from publishing, without actually publishing it.
-
-```bash
-flutter pub publish --dry-run
-```
-
-This command will check for things like a complete `pubspec.yaml`, a `CHANGELOG.md` file, and a `LICENSE` file.
-
-## 5. Publish the Package
-
-Once the dry run completes without any errors, you can publish your package for real.
+If automated publishing is unavailable, publish from a local machine:
 
 ```bash
 flutter pub publish
 ```
-
-This command will ask you to confirm that you want to publish, and then it will upload your package to pub.dev. You will need to be logged in with your Google account. If you are not logged in, the command will provide you with a URL to log in.
-
-That's it! Your package will now be available on pub.dev.

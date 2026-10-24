@@ -1,3 +1,21 @@
+## 0.3.0
+
+* **NEW**: `initialCountryCode` parameter to start with a known country and skip timezone detection
+* **NEW**: `controller` parameter to read or set the phone number from outside the widget
+* **NEW**: `autovalidateMode` parameter, passed to the underlying `TextFormField`
+* **NEW**: Public `timezoneCountryMapping` map and `countryCodeForTimezone()` helper, exported together with `phoneNumberLengths` from `package:smart_phone_numb/smart_phone_numb.dart`
+* **IMPROVED**: Timezone mapping is now a compile-time constant instead of a JSON asset, so lookup is synchronous and no asset loading or fallback map is needed
+* **IMPROVED**: Added 100+ legacy timezone aliases still reported by some devices (e.g. `Asia/Calcutta`, `Asia/Saigon`, `Europe/Kiev`, `US/Eastern`)
+* **IMPROVED**: Removed the hand-written timezone if-chains, which contained timezone names that do not exist in the IANA database
+* **IMPROVED**: `onChanged` is no longer called repeatedly with unchanged data (e.g. on cursor moves or when switching country on an empty field)
+* **IMPROVED**: Clearer validation message for fixed-length numbers ("must be 10 digits")
+* **IMPROVED**: Fixed-size loading indicator so the row does not jump while detecting the country
+* **FIXED**: The field no longer stays on the loading spinner if the timezone plugin never answers (detection times out after 5 seconds)
+* **FIXED**: An unknown or invalid country code no longer throws; the widget falls back to `defaultCountryCode`, then `US`
+* **UPDATED**: `flutter_timezone` to `^5.1.1`
+* **UPDATED**: Minimum SDK to Dart 3.8 / Flutter 3.32
+* **CHORE**: Added GitHub Actions CI (format, analyze, test, pana), automated pub.dev publishing on version tags, and Dependabot
+
 ## 0.2.4
 
 * **FIXED**: Added `mounted` guard to prevent `setState() called after dispose()` crash during async timezone detection

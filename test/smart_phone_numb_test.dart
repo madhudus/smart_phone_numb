@@ -1,6 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_phone_numb/phone_number_lengths.dart';
 import 'package:smart_phone_numb/smart_phone_numb.dart';
 
 void main() {
@@ -70,15 +72,21 @@ void main() {
       for (final entry in phoneNumberLengths.entries) {
         final min = entry.value['min']!;
         final max = entry.value['max']!;
-        expect(min <= max, isTrue,
-            reason: '${entry.key}: min ($min) > max ($max)');
+        expect(
+          min <= max,
+          isTrue,
+          reason: '${entry.key}: min ($min) > max ($max)',
+        );
       }
     });
 
     test('max never exceeds E.164 limit of 15 digits', () {
       for (final entry in phoneNumberLengths.entries) {
-        expect(entry.value['max']!, lessThanOrEqualTo(15),
-            reason: '${entry.key} max exceeds E.164 limit');
+        expect(
+          entry.value['max']!,
+          lessThanOrEqualTo(15),
+          reason: '${entry.key} max exceeds E.164 limit',
+        );
       }
     });
 
@@ -97,71 +105,193 @@ void main() {
     });
   });
 
+  group('timezoneCountryMapping', () {
+    test('maps canonical IANA timezones', () {
+      expect(countryCodeForTimezone('Asia/Kolkata'), 'IN');
+      expect(countryCodeForTimezone('America/New_York'), 'US');
+      expect(countryCodeForTimezone('Europe/Berlin'), 'DE');
+      expect(countryCodeForTimezone('America/Toronto'), 'CA');
+      expect(countryCodeForTimezone('Australia/Sydney'), 'AU');
+    });
+
+    test('maps legacy timezone aliases', () {
+      expect(countryCodeForTimezone('Asia/Calcutta'), 'IN');
+      expect(countryCodeForTimezone('America/Buenos_Aires'), 'AR');
+      expect(countryCodeForTimezone('Europe/Kiev'), 'UA');
+      expect(countryCodeForTimezone('US/Eastern'), 'US');
+    });
+
+    test('returns null for unknown timezones', () {
+      expect(countryCodeForTimezone('Mars/Olympus_Mons'), isNull);
+      expect(countryCodeForTimezone('UTC'), isNull);
+    });
+
+    test('every value is a two-letter uppercase country code', () {
+      final pattern = RegExp(r'^[A-Z]{2}$');
+      for (final entry in timezoneCountryMapping.entries) {
+        expect(entry.value, matches(pattern), reason: entry.key);
+      }
+    });
+  });
+
   group('SmartPhoneNumberField', () {
-    testWidgets('creates widget without error', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: SmartPhoneNumberField(),
-          ),
-        ),
-      );
-      expect(find.byType(SmartPhoneNumberField), findsOneWidget);
+    const channel = MethodChannel('flutter_timezone');
+
+    void mockTimezone(String? timezone) {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            if (timezone == null) {
+              throw PlatformException(code: 'UNAVAILABLE');
+            }
+            return timezone;
+          });
+    }
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
     });
 
-    testWidgets('displays phone number input field',
-        (WidgetTester tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: SmartPhoneNumberField(),
-          ),
-        ),
+    Widget buildField(SmartPhoneNumberField field) {
+      return MaterialApp(
+        home: Scaffold(body: Form(child: field)),
       );
-      expect(find.byType(TextFormField), findsOneWidget);
+    }
+
+    testWidgets('detects the country from the device timezone', (tester) async {
+      mockTimezone('Asia/Kolkata');
+      PhoneNumberData? data;
+      await tester.pumpWidget(
+        buildField(SmartPhoneNumberField(onChanged: (d) => data = d)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('+91'), findsOneWidget);
+      expect(find.byIcon(Icons.warning), findsNothing);
+      expect(data?.countryCode, 'IN');
+      expect(data?.dialCode, '+91');
     });
 
-    testWidgets('accepts custom default country code',
-        (WidgetTester tester) async {
+    testWidgets('falls back to defaultCountryCode when detection fails', (
+      tester,
+    ) async {
+      mockTimezone(null);
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: SmartPhoneNumberField(defaultCountryCode: 'DE'),
-          ),
-        ),
+        buildField(const SmartPhoneNumberField(defaultCountryCode: 'DE')),
       );
-      expect(find.byType(SmartPhoneNumberField), findsOneWidget);
+      await tester.pumpAndSettle();
+
+      expect(find.text('+49'), findsOneWidget);
+      expect(find.byIcon(Icons.warning), findsOneWidget);
     });
 
-    testWidgets('accepts custom favorite countries',
-        (WidgetTester tester) async {
+    testWidgets('falls back to defaultCountryCode for unknown timezones', (
+      tester,
+    ) async {
+      mockTimezone('Etc/UTC');
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: SmartPhoneNumberField(
-              favoriteCountries: ['+49', 'DE', '+44', 'GB'],
-            ),
-          ),
-        ),
+        buildField(const SmartPhoneNumberField(defaultCountryCode: 'GB')),
       );
-      expect(find.byType(SmartPhoneNumberField), findsOneWidget);
+      await tester.pumpAndSettle();
+
+      expect(find.text('+44'), findsOneWidget);
     });
 
-    testWidgets('accepts new optional parameters',
-        (WidgetTester tester) async {
+    testWidgets('falls back when timezone detection never answers', (
+      tester,
+    ) async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            channel,
+            (call) => Completer<Object?>().future,
+          );
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SmartPhoneNumberField(
-              enabled: false,
-              showCounterText: true,
-              style: const TextStyle(fontSize: 18),
-              decoration: const InputDecoration(labelText: 'Custom Label'),
-            ),
+        buildField(const SmartPhoneNumberField(defaultCountryCode: 'FR')),
+      );
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump();
+
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('+33'), findsOneWidget);
+    });
+
+    testWidgets('initialCountryCode skips timezone detection', (tester) async {
+      var detectionCalls = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            detectionCalls++;
+            return 'America/New_York';
+          });
+      await tester.pumpWidget(
+        buildField(const SmartPhoneNumberField(initialCountryCode: 'JP')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('+81'), findsOneWidget);
+      expect(detectionCalls, 0);
+    });
+
+    testWidgets('reports changes once per distinct value', (tester) async {
+      mockTimezone('America/New_York');
+      final updates = <PhoneNumberData>[];
+      await tester.pumpWidget(
+        buildField(SmartPhoneNumberField(onChanged: updates.add)),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField), '5551234567');
+      await tester.pump();
+
+      expect(updates.map((d) => d.fullPhoneNumber), ['+1', '+15551234567']);
+    });
+
+    testWidgets('only accepts digits up to the country maximum', (
+      tester,
+    ) async {
+      mockTimezone('America/New_York');
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        buildField(SmartPhoneNumberField(controller: controller)),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField), '(555) 123-4567 89');
+      expect(controller.text, '5551234567');
+    });
+
+    testWidgets('validates the number length for the country', (tester) async {
+      mockTimezone('America/New_York');
+      await tester.pumpWidget(buildField(const SmartPhoneNumberField()));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField), '123');
+      final form = tester.state<FormState>(find.byType(Form));
+      expect(form.validate(), isFalse);
+      await tester.pump();
+      expect(find.textContaining('must be 10 digits'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextFormField), '5551234567');
+      expect(form.validate(), isTrue);
+    });
+
+    testWidgets('applies custom decoration and disabled state', (tester) async {
+      mockTimezone('America/New_York');
+      await tester.pumpWidget(
+        buildField(
+          const SmartPhoneNumberField(
+            enabled: false,
+            decoration: InputDecoration(labelText: 'Mobile'),
           ),
         ),
       );
-      expect(find.byType(SmartPhoneNumberField), findsOneWidget);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Mobile'), findsOneWidget);
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.enabled, isFalse);
     });
   });
 }

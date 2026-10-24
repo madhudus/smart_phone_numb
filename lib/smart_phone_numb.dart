@@ -1,10 +1,14 @@
-import 'dart:convert';
 import 'dart:developer';
+
 import 'package:country_code_picker/country_code_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:smart_phone_numb/phone_number_lengths.dart';
+import 'package:smart_phone_numb/timezone_country_mapping.dart';
+
+export 'package:smart_phone_numb/phone_number_lengths.dart';
+export 'package:smart_phone_numb/timezone_country_mapping.dart';
 
 /// Contains the current phone number data including country code and number.
 class PhoneNumberData {
@@ -20,6 +24,7 @@ class PhoneNumberData {
   /// The complete phone number with country code
   String get fullPhoneNumber => '$dialCode$phoneNumber';
 
+  /// Creates a [PhoneNumberData] from its parts.
   const PhoneNumberData({
     required this.dialCode,
     required this.countryCode,
@@ -56,31 +61,48 @@ class SmartPhoneNumberField extends StatefulWidget {
   /// an appropriate country code for phone number input.
   ///
   /// [defaultCountryCode] - The default country code to use if timezone detection fails
+  /// [initialCountryCode] - A country code to start with, skipping timezone detection
   /// [favoriteCountries] - A list of favorite country codes to show first in the picker
   /// [onChanged] - Called whenever the phone number or country code changes
+  /// [controller] - Controls the text of the phone number field
   /// [decoration] - Custom input decoration for the phone number field
   /// [style] - Text style for the phone number field
   /// [enabled] - Whether the field is enabled for input
   /// [showCounterText] - Whether to show the character counter
+  /// [autovalidateMode] - When the phone number field validates itself
   const SmartPhoneNumberField({
     super.key,
     this.defaultCountryCode = 'US',
+    this.initialCountryCode,
     this.favoriteCountries = const [],
     this.onChanged,
+    this.controller,
     this.decoration,
     this.style,
     this.enabled = true,
     this.showCounterText = false,
+    this.autovalidateMode,
   });
 
   /// The default country code to use if timezone detection fails
   final String defaultCountryCode;
+
+  /// A two-letter country code (e.g. `'IN'`) to start with.
+  ///
+  /// When set, timezone detection is skipped. Useful when editing a phone
+  /// number whose country is already known.
+  final String? initialCountryCode;
 
   /// A list of favorite country codes to show first in the picker
   final List<String> favoriteCountries;
 
   /// Called whenever the phone number or country code changes
   final void Function(PhoneNumberData)? onChanged;
+
+  /// Controls the text of the phone number field (without the dial code).
+  ///
+  /// If null, the widget creates and manages its own controller.
+  final TextEditingController? controller;
 
   /// Custom input decoration for the phone number field.
   /// If null, a default decoration with 'Phone Number' label is used.
@@ -95,249 +117,118 @@ class SmartPhoneNumberField extends StatefulWidget {
   /// Whether to show the character counter text. Defaults to `false`.
   final bool showCounterText;
 
+  /// When the phone number field validates itself.
+  ///
+  /// If null, the enclosing [Form]'s mode is used.
+  final AutovalidateMode? autovalidateMode;
+
   @override
   State<SmartPhoneNumberField> createState() => _SmartPhoneNumberFieldState();
 }
 
 class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
-  final TextEditingController _phoneNumberController = TextEditingController();
+  static const _timezoneDetectionTimeout = Duration(seconds: 5);
+
+  TextEditingController? _internalController;
   CountryCode? _countryCode;
   bool _isFetchingTimezone = false;
   bool _hasTimezoneError = false;
+  PhoneNumberData? _lastNotifiedData;
 
-  /// Cached timezone-to-country map shared across all instances.
-  static Map<String, String>? _cachedTimezoneMap;
+  TextEditingController get _phoneNumberController =>
+      widget.controller ?? (_internalController ??= TextEditingController());
 
   @override
   void initState() {
     super.initState();
-    _loadTimezoneMapping();
     _phoneNumberController.addListener(_notifyPhoneNumberChanged);
+
+    final initialCountry = _tryCountryCode(widget.initialCountryCode);
+    if (initialCountry != null) {
+      _countryCode = initialCountry;
+      // Defer so a parent calling setState in onChanged is not mid-build.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _notifyPhoneNumberChanged();
+      });
+    } else {
+      _isFetchingTimezone = true;
+      _getInitialCountryCode();
+    }
+  }
+
+  @override
+  void didUpdateWidget(SmartPhoneNumberField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.controller != oldWidget.controller) {
+      (oldWidget.controller ?? _internalController)?.removeListener(
+        _notifyPhoneNumberChanged,
+      );
+      if (widget.controller != null) {
+        _internalController?.dispose();
+        _internalController = null;
+      }
+      _phoneNumberController.addListener(_notifyPhoneNumberChanged);
+    }
   }
 
   @override
   void dispose() {
     _phoneNumberController.removeListener(_notifyPhoneNumberChanged);
-    _phoneNumberController.dispose();
+    _internalController?.dispose();
     super.dispose();
+  }
+
+  /// Returns the [CountryCode] for a two-letter [code], or `null` if the
+  /// code is missing or unknown to the country picker.
+  static CountryCode? _tryCountryCode(String? code) {
+    if (code == null || code.isEmpty) return null;
+    try {
+      return CountryCode.fromCountryCode(code.toUpperCase());
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Notifies parent widget about phone number or country code changes
   void _notifyPhoneNumberChanged() {
-    if (widget.onChanged != null && _countryCode != null) {
-      final data = PhoneNumberData(
-        dialCode: _countryCode!.dialCode ?? '',
-        countryCode: _countryCode!.code ?? '',
-        phoneNumber: _phoneNumberController.text,
-      );
-      widget.onChanged!(data);
-    }
+    if (widget.onChanged == null || _countryCode == null) return;
+    final data = PhoneNumberData(
+      dialCode: _countryCode!.dialCode ?? '',
+      countryCode: _countryCode!.code ?? '',
+      phoneNumber: _phoneNumberController.text,
+    );
+    // The controller also notifies on cursor and selection changes.
+    if (data == _lastNotifiedData) return;
+    _lastNotifiedData = data;
+    widget.onChanged!(data);
   }
 
   Future<void> _getInitialCountryCode() async {
-    if (!mounted) return;
-    setState(() {
-      _isFetchingTimezone = true;
-      _hasTimezoneError = false;
-    });
-
+    CountryCode? detected;
     try {
-      final timezoneInfo = await FlutterTimezone.getLocalTimezone();
-      final country = _getCountryFromTimezone(timezoneInfo.identifier);
-
-      if (!mounted) return;
-      setState(() {
-        _countryCode = CountryCode.fromCountryCode(country ?? widget.defaultCountryCode);
-        _isFetchingTimezone = false;
-      });
+      // Never leave the picker hidden behind a spinner if the platform
+      // implementation does not answer.
+      final timezoneInfo = await FlutterTimezone.getLocalTimezone().timeout(
+        _timezoneDetectionTimeout,
+      );
+      detected = _tryCountryCode(
+        countryCodeForTimezone(timezoneInfo.identifier),
+      );
     } catch (e) {
       log('Error getting timezone: $e', name: 'SmartPhoneNumberField');
-
-      if (!mounted) return;
-      setState(() {
-        _hasTimezoneError = true;
-        _countryCode = CountryCode.fromCountryCode(widget.defaultCountryCode);
-        _isFetchingTimezone = false;
-      });
     }
+
+    if (!mounted) return;
+    setState(() {
+      _hasTimezoneError = detected == null;
+      _countryCode =
+          detected ??
+          _tryCountryCode(widget.defaultCountryCode) ??
+          _tryCountryCode('US');
+      _isFetchingTimezone = false;
+    });
 
     _notifyPhoneNumberChanged();
-  }
-
-  Future<void> _loadTimezoneMapping() async {
-    if (_cachedTimezoneMap != null) {
-      _getInitialCountryCode();
-      return;
-    }
-
-    try {
-      final jsonString = await rootBundle.loadString(
-          'packages/smart_phone_numb/timezone_country_mapping.json');
-      final Map<String, dynamic> jsonMap = json.decode(jsonString);
-      _cachedTimezoneMap = jsonMap.cast<String, String>();
-      _getInitialCountryCode();
-    } catch (e) {
-      // Fallback to basic mapping if JSON loading fails
-      _cachedTimezoneMap = {
-        // Americas
-        'America/New_York': 'US',
-        'America/Chicago': 'US',
-        'America/Denver': 'US',
-        'America/Los_Angeles': 'US',
-        'America/Toronto': 'CA',
-        'America/Vancouver': 'CA',
-        'America/Mexico_City': 'MX',
-        'America/Sao_Paulo': 'BR',
-        'America/Buenos_Aires': 'AR',
-        // Europe
-        'Europe/London': 'GB',
-        'Europe/Paris': 'FR',
-        'Europe/Berlin': 'DE',
-        'Europe/Rome': 'IT',
-        'Europe/Madrid': 'ES',
-        'Europe/Moscow': 'RU',
-        'Europe/Amsterdam': 'NL',
-        'Europe/Brussels': 'BE',
-        'Europe/Stockholm': 'SE',
-        'Europe/Warsaw': 'PL',
-        // Asia
-        'Asia/Kolkata': 'IN',
-        'Asia/Calcutta': 'IN',
-        'Asia/Shanghai': 'CN',
-        'Asia/Tokyo': 'JP',
-        'Asia/Seoul': 'KR',
-        'Asia/Hong_Kong': 'HK',
-        'Asia/Singapore': 'SG',
-        'Asia/Dubai': 'AE',
-        'Asia/Bangkok': 'TH',
-        'Asia/Jakarta': 'ID',
-        'Asia/Manila': 'PH',
-        // Oceania
-        'Australia/Sydney': 'AU',
-        'Australia/Melbourne': 'AU',
-        'Australia/Perth': 'AU',
-        'Pacific/Auckland': 'NZ',
-        // Africa
-        'Africa/Cairo': 'EG',
-        'Africa/Johannesburg': 'ZA',
-        'Africa/Lagos': 'NG',
-        'Africa/Nairobi': 'KE',
-      };
-      _getInitialCountryCode();
-    }
-  }
-
-  String? _getCountryFromTimezone(String timezone) {
-    if (_cachedTimezoneMap != null) {
-      // Try exact match first
-      if (_cachedTimezoneMap!.containsKey(timezone)) {
-        return _cachedTimezoneMap![timezone];
-      }
-
-      // Fallback patterns for better coverage
-      if (timezone.startsWith('America/')) {
-        if (timezone == 'America/Argentina/Buenos_Aires' ||
-            timezone == 'America/Argentina/Catamarca' ||
-            timezone == 'America/Argentina/Cordoba' ||
-            timezone == 'America/Argentina/Jujuy' ||
-            timezone == 'America/Argentina/La_Rioja' ||
-            timezone == 'America/Argentina/Mendoza' ||
-            timezone == 'America/Argentina/Rio_Gallegos' ||
-            timezone == 'America/Argentina/Salta' ||
-            timezone == 'America/Argentina/San_Juan' ||
-            timezone == 'America/Argentina/San_Luis' ||
-            timezone == 'America/Argentina/Tucuman' ||
-            timezone == 'America/Argentina/Ushuaia') {
-          return 'AR';
-        }
-        if (timezone == 'America/Buenos_Aires') return 'AR';
-        if (timezone == 'America/Sao_Paulo' ||
-            timezone == 'America/Fortaleza' ||
-            timezone == 'America/Recife' ||
-            timezone == 'America/Salvador' ||
-            timezone == 'America/Bahia' ||
-            timezone == 'America/Maceio' ||
-            timezone == 'America/Campo_Grande' ||
-            timezone == 'America/Cuiaba' ||
-            timezone == 'America/Porto_Velho' ||
-            timezone == 'America/Boa_Vista' ||
-            timezone == 'America/Manaus' ||
-            timezone == 'America/Eirunepe' ||
-            timezone == 'America/Rio_Branco') {
-          return 'BR';
-        }
-        if (timezone == 'America/Toronto' ||
-            timezone == 'America/Vancouver' ||
-            timezone == 'America/Montreal' ||
-            timezone == 'America/Calgary' ||
-            timezone == 'America/Edmonton' ||
-            timezone == 'America/Winnipeg' ||
-            timezone == 'America/Halifax' ||
-            timezone == 'America/Regina' ||
-            timezone == 'America/Fredericton' ||
-            timezone == 'America/St_Johns') {
-          return 'CA';
-        }
-        if (timezone == 'America/Mexico_City' ||
-            timezone == 'America/Cancun' ||
-            timezone == 'America/Hermosillo' ||
-            timezone == 'America/Mazatlan' ||
-            timezone == 'America/Chihuahua' ||
-            timezone == 'America/Tijuana' ||
-            timezone == 'America/Matamoros' ||
-            timezone == 'America/Ojinaga' ||
-            timezone == 'America/Bahia_Banderas') {
-          return 'MX';
-        }
-        return widget.defaultCountryCode;
-      }
-      if (timezone.startsWith('Europe/')) {
-        if (timezone == 'Europe/Paris') {
-          return 'FR';
-        }
-        if (timezone == 'Europe/Berlin') {
-          return 'DE';
-        }
-        if (timezone == 'Europe/Rome') {
-          return 'IT';
-        }
-        if (timezone == 'Europe/Madrid') {
-          return 'ES';
-        }
-        return widget.defaultCountryCode;
-      }
-      if (timezone.startsWith('Asia/')) {
-        if (timezone == 'Asia/Tokyo') return 'JP';
-        if (timezone == 'Asia/Seoul') return 'KR';
-        if (timezone == 'Asia/Shanghai' ||
-            timezone == 'Asia/Chongqing' ||
-            timezone == 'Asia/Harbin' ||
-            timezone == 'Asia/Urumqi') {
-          return 'CN';
-        }
-        if (timezone == 'Asia/Bangkok') return 'TH';
-        if (timezone == 'Asia/Jakarta' ||
-            timezone == 'Asia/Surabaya' ||
-            timezone == 'Asia/Medan' ||
-            timezone == 'Asia/Makassar') {
-          return 'ID';
-        }
-        if (timezone == 'Asia/Kuala_Lumpur' ||
-            timezone == 'Asia/Kuching') {
-          return 'MY';
-        }
-        return widget.defaultCountryCode;
-      }
-      if (timezone.startsWith('Australia/')) return 'AU';
-      if (timezone.startsWith('Africa/')) {
-        if (timezone == 'Africa/Cairo') return 'EG';
-        if (timezone == 'Africa/Johannesburg') return 'ZA';
-        if (timezone == 'Africa/Lagos') return 'NG';
-        return widget.defaultCountryCode;
-      }
-    }
-
-    return widget.defaultCountryCode;
   }
 
   Widget _buildCountryCodePicker() {
@@ -345,9 +236,13 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
       onChanged: (countryCode) {
         setState(() {
           _countryCode = countryCode;
-          _phoneNumberController.clear();
         });
-        _notifyPhoneNumberChanged();
+        // Clearing the text notifies the listener with the new country.
+        if (_phoneNumberController.text.isEmpty) {
+          _notifyPhoneNumberChanged();
+        } else {
+          _phoneNumberController.clear();
+        }
       },
       initialSelection: _countryCode?.code,
       favorite: widget.favoriteCountries,
@@ -355,15 +250,28 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
     );
   }
 
+  String? _validate(String? value) {
+    if (_countryCode == null || value == null || value.isEmpty) {
+      return null;
+    }
+    final lengths = phoneNumberLengths[_countryCode!.code];
+    if (lengths != null) {
+      final min = lengths['min']!;
+      final max = lengths['max']!;
+      if (value.length < min || value.length > max) {
+        final digits = min == max ? '$min' : 'between $min and $max';
+        return 'Phone number must be $digits digits for ${_countryCode!.name}';
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
-    int? maxLength;
-    if (_countryCode != null &&
-        phoneNumberLengths.containsKey(_countryCode!.code)) {
-      maxLength = phoneNumberLengths[_countryCode!.code]!['max'];
-    }
+    final maxLength = phoneNumberLengths[_countryCode?.code]?['max'];
 
-    final effectiveDecoration = widget.decoration ??
+    final effectiveDecoration =
+        widget.decoration ??
         InputDecoration(
           labelText: 'Phone Number',
           counterText: widget.showCounterText ? null : '',
@@ -374,7 +282,13 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
         if (_isFetchingTimezone)
           Semantics(
             label: 'Detecting country',
-            child: const CircularProgressIndicator(),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: SizedBox.square(
+                dimension: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
           )
         else if (_hasTimezoneError)
           Stack(
@@ -385,11 +299,7 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
                 top: 0,
                 child: Tooltip(
                   message: 'Could not detect timezone automatically',
-                  child: Icon(
-                    Icons.warning,
-                    color: Colors.orange,
-                    size: 16,
-                  ),
+                  child: Icon(Icons.warning, color: Colors.orange, size: 16),
                 ),
               ),
             ],
@@ -403,24 +313,10 @@ class _SmartPhoneNumberFieldState extends State<SmartPhoneNumberField> {
             maxLength: maxLength,
             enabled: widget.enabled,
             style: widget.style,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-            ],
+            autovalidateMode: widget.autovalidateMode,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             decoration: effectiveDecoration,
-            validator: (value) {
-              if (_countryCode == null || value == null || value.isEmpty) {
-                return null;
-              }
-              final lengths = phoneNumberLengths[_countryCode!.code];
-              if (lengths != null) {
-                final min = lengths['min']!;
-                final max = lengths['max']!;
-                if (value.length < min || value.length > max) {
-                  return 'Phone number must be between $min and $max digits for ${_countryCode!.name}';
-                }
-              }
-              return null;
-            },
+            validator: _validate,
           ),
         ),
       ],

@@ -5,7 +5,7 @@
 /// providing the min and max digit counts for local phone numbers.
 /// Used by [SmartPhoneNumberField] for country-specific validation.
 const Map<String, Map<String, int>> phoneNumberLengths = {
-  'KP': {'min': 6, 'max': 17},
+  'KP': {'min': 6, 'max': 15},
   'AU': {'min': 5, 'max': 15},
   'JP': {'min': 5, 'max': 13},
   'DE': {'min': 6, 'max': 13},
@@ -20,7 +20,7 @@ const Map<String, Map<String, int>> phoneNumberLengths = {
   'HR': {'min': 8, 'max': 12},
   'ME': {'min': 4, 'max': 12},
   'PK': {'min': 8, 'max': 11},
-  'IT': {'min': 0, 'max': 11},
+  'IT': {'min': 6, 'max': 11},
   'KR': {'min': 8, 'max': 11},
   'PE': {'min': 8, 'max': 11},
   'PG': {'min': 4, 'max': 11},
@@ -30,7 +30,7 @@ const Map<String, Map<String, int>> phoneNumberLengths = {
   'UY': {'min': 4, 'max': 11},
   'CY': {'min': 8, 'max': 11},
   'LU': {'min': 4, 'max': 11},
-  'VA': {'min': 0, 'max': 11},
+  'VA': {'min': 6, 'max': 11},
   'IN': {'min': 7, 'max': 10},
   'US': {'min': 10, 'max': 10},
   'ID': {'min': 5, 'max': 10},

@@ -247,6 +247,35 @@ void main() {
       expect(updates.map((d) => d.fullPhoneNumber), ['+1', '+15551234567']);
     });
 
+    testWidgets('follows a controller that is swapped for another', (
+      tester,
+    ) async {
+      final first = TextEditingController();
+      final second = TextEditingController();
+      addTearDown(first.dispose);
+      addTearDown(second.dispose);
+      final numbers = <String>[];
+      Widget field(TextEditingController controller) => buildField(
+        SmartPhoneNumberField(
+          initialCountryCode: 'US',
+          controller: controller,
+          onChanged: (d) => numbers.add(d.phoneNumber),
+        ),
+      );
+
+      await tester.pumpWidget(field(first));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(field(second));
+
+      // The old controller must no longer drive onChanged.
+      first.text = '999';
+      second.text = '555';
+      await tester.pump();
+
+      expect(numbers, ['', '555']);
+      expect(find.text('555'), findsOneWidget);
+    });
+
     testWidgets('only accepts digits up to the country maximum', (
       tester,
     ) async {

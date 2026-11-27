@@ -11,7 +11,7 @@ A Flutter package that provides a smart phone number input field with automatic 
 - **Dynamic Phone Number Validation**: Sets minimum and maximum phone number length limits based on the selected country
 - **Country Code Picker Integration**: Easy-to-use country selector with flag display
 - **Real-time Validation**: Validates phone numbers according to country-specific rules
-- **Support for 221+ Countries**: Comprehensive database of phone number formats worldwide
+- **Support for 219 Countries**: Comprehensive database of phone number formats worldwide
 
 ## Getting Started
 

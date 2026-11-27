@@ -1,7 +1,7 @@
 /// A comprehensive mapping of country codes to their minimum and maximum
 /// phone number lengths (excluding country code).
 ///
-/// This data includes validation rules for 221+ countries worldwide,
+/// This data includes validation rules for 219 countries worldwide,
 /// providing the min and max digit counts for local phone numbers.
 /// Used by [SmartPhoneNumberField] for country-specific validation.
 const Map<String, Map<String, int>> phoneNumberLengths = {
